@@ -16,6 +16,7 @@ PointCMT (Cross-Modality Transformer) is a neural network architecture for 3D da
 ### Current Implementation (with MeshNet)
 
 ```python
+import torch
 from model import PointCMT
 
 # Create model with MeshNet branch

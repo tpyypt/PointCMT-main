@@ -4,7 +4,6 @@ Test script to demonstrate PointCMT with MeshNet branch
 
 import torch
 from model import PointCMT
-from meshnet import MeshNetBranch
 
 
 def test_meshnet_pointcmt():

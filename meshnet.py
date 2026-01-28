@@ -81,10 +81,13 @@ class MeshBlock(nn.Module):
 class MeshNetBranch(nn.Module):
     """MeshNet branch for mesh data processing in PointCMT"""
     
-    def __init__(self, input_channels=6, hidden_dims=[64, 128, 256], 
+    def __init__(self, input_channels=6, hidden_dims=None, 
                  output_dim=512, neighbor_num=3):
         super(MeshNetBranch, self).__init__()
-        self.input_channels = input_channels  # Faces with normals (3 vertices * 2 features)
+        if hidden_dims is None:
+            hidden_dims = [64, 128, 256]
+        
+        self.input_channels = input_channels  # Mesh face feature channels
         self.output_dim = output_dim
         self.neighbor_num = neighbor_num
         
