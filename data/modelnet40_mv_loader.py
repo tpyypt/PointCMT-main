@@ -214,6 +214,8 @@ class ModelNet40_OfflineFeatures(Dataset):
         self.split = split
         feature_path = root + r"/modelnet40_%s_mvf.pth" % self.split
         self.dataset = torch.load(feature_path)
+        # 新增: Mesh数据路径
+        self.mesh_data_root = root.replace('data', 'mesh_data')  # 根据实际路径调整
 
     def __len__(self):
         return len(self.dataset)

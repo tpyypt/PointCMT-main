@@ -168,17 +168,18 @@ def validate(loader, model, task='cls'):
             time1 = time()
             time2 = time()
 
-            data_batch = normalize_batch(data_batch)
-            pc_in = data_batch['pointcloud']
-            # pointcloud can be either a Tensor [B,N,3] (PointNet2)
-            # or a mesh tuple/list (centers,corners,normals,neighbor_index) for MeshNet.
-            if torch.is_tensor(pc_in):
-                pc_in = pc_in.cuda()
-            # ---- 临时对齐：如果 dataset 还在输出点云 [B,N,3]，先转成 MeshNet 可吃的格式 ----
-            if torch.is_tensor(pc_in) and pc_in.dim() == 3 and pc_in.size(-1) == 3:
-                pc_in = pc_to_dummy_mesh(pc_in)
-            # -------------------------------------------------------------------------
-            out, _ = model(pc_in)
+            # ========== 修改点 ==========
+            if cfg.model_name == 'meshnet':
+                mesh_data = {
+                    'centers': data_batch['centers'].cuda(),
+                    'corners': data_batch['corners'].cuda(),
+                    'normals': data_batch['normals'].cuda(),
+                    'neighbor_index': data_batch['neighbor_index'].cuda()
+                }
+                out, _ = model(mesh_data)
+            else:
+                out, _ = model(data_batch['pointcloud'].cuda())
+            # ============================
 
             time3 = time()
             perf.update(data_batch=data_batch, out=out)
@@ -237,28 +238,25 @@ def train(loader, model, decoder_model, optimizer, EmdLoss, task='cls'):
     time3 = time()
     for i, data_batch in enumerate(loader):
         time1 = time()
-        data_batch = normalize_batch(data_batch)
-        pc_in = data_batch['pointcloud']
+        batch_size = data_batch['pointcloud'].shape[0]
         mv_feature = data_batch['multiview']
 
-        if torch.is_tensor(mv_feature):
-            mv_feature = mv_feature.to(DEVICE)
-        # Support both tensor pointcloud and mesh tuple/list inputs
-        if torch.is_tensor(pc_in):
-            batch_size = pc_in.shape[0]
-            pc_in = pc_in.to(DEVICE)
-        elif isinstance(pc_in, (tuple, list)):
-            batch_size = pc_in[0].shape[0]
-        elif isinstance(pc_in, dict):
-            batch_size = pc_in['centers'].shape[0]
+        # ========== 关键修改点 ==========
+        # 如果使用MeshNet,需要准备mesh_data
+        if cfg.model_name == 'meshnet':
+            mesh_data = {
+                'centers': data_batch['centers'].cuda(),
+                'corners': data_batch['corners'].cuda(),
+                'normals': data_batch['normals'].cuda(),
+                'neighbor_index': data_batch['neighbor_index'].cuda()
+            }
+            out, mesh_feature = model(mesh_data)
         else:
-            raise TypeError(f"Unsupported type for data_batch['pointcloud']: {type(pc_in)}")
+            # 原来的PointNet2分支
+            out, pc_feature = model(data_batch['pointcloud'])
+            mesh_feature = pc_feature  # 统一变量名
+        # ================================
 
-        # ---- 临时对齐：如果 dataset 还在输出点云 [B,N,3]，先转成 MeshNet 可吃的格式 ----
-        if torch.is_tensor(pc_in) and pc_in.dim() == 3 and pc_in.size(-1) == 3:
-            pc_in = pc_to_dummy_mesh(pc_in)
-        # -------------------------------------------------------------------------
-        out, pc_feature = model(pc_in)
         loss = get_loss(task, 'smooth', data_batch, out)
 
         if not cfg.no_pointcmt:
@@ -301,7 +299,6 @@ def train(loader, model, decoder_model, optimizer, EmdLoss, task='cls'):
 
     print('Feature enhancement loss is ', train_fe_loss * 1.0 / 9840)
     print('Classifier enhencement loss is ', train_cle_loss * 1.0 / 9840)
-    print("pc_in type:", type(pc_in), "mv_feature shape:", mv_feature.shape if torch.is_tensor(mv_feature) else None)
 
     return perf.agg(), perf.agg_loss()
 
@@ -351,36 +348,12 @@ def load_model_opt_sched(model, optimizer, lr_sched, bnm_sched, model_path):
 def get_model(cfg):
     if cfg.model_name == 'pointnet2':
         model = models.PointNet2(num_class=cfg.num_class)
-
-    elif cfg.model_name in ['meshnet', 'meshnet_pointcmt']:
-        # 1) meshnet 配置：没有就用默认
-        if not hasattr(cfg, 'meshnet_cfg') or cfg.meshnet_cfg is None:
-            mesh_cfg = {
-                'structural_descriptor': {'num_kernel': 64, 'sigma': 0.2},
-                'mesh_convolution': {'aggregation_method': 'Concat'},
-                'mask_ratio': 0.95,
-                'dropout': 0.5,
-                'num_classes': cfg.num_class,
-            }
-        else:
-            import yaml
-            with open(cfg.meshnet_cfg, 'r') as f:
-                y = yaml.safe_load(f)
-            mesh_cfg = y.get('MeshNet', y)
-            mesh_cfg = dict(mesh_cfg)
-            mesh_cfg['num_classes'] = cfg.num_class
-
-        # 2) 构建 meshnet backbone（关键：require_fea=True 要能返回 feature）
-        meshnet = models.MeshNet(mesh_cfg, require_fea=True)
-
-        # 3) 用你写的 wrapper / MeshPointCMT，把 feature 投影到 512
-        model = models.MeshPointCMT(meshnet=meshnet, num_class=cfg.num_class, proj_dim=512)
-
+    elif cfg.model_name == 'meshnet':  # 新增分支
+        model = models.MeshNetPointCMT(num_class=cfg.num_class)
     else:
         raise NotImplementedError
 
     return model
-
 
 def get_metric_from_perf(task, perf, metric_name):
     if task in ['cls', 'cls_trans']:
