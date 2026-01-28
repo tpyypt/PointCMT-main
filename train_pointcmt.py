@@ -52,6 +52,26 @@ def pc_to_dummy_mesh(pc):
     return (centers, corners, normals, neighbor_index)
 
 
+def build_mesh_data(data_batch):
+    if all(k in data_batch for k in ('mesh_centers', 'mesh_corners', 'mesh_normals', 'mesh_neighbors')):
+        return {
+            'centers': data_batch['mesh_centers'].cuda(),
+            'corners': data_batch['mesh_corners'].cuda(),
+            'normals': data_batch['mesh_normals'].cuda(),
+            'neighbor_index': data_batch['mesh_neighbors'].cuda(),
+        }
+
+    pc_in = data_batch['pointcloud']
+    if torch.is_tensor(pc_in) and pc_in.dim() == 3 and pc_in.size(-1) == 3:
+        centers, corners, normals, neighbor_index = pc_to_dummy_mesh(pc_in.cuda())
+        return {
+            'centers': centers,
+            'corners': corners,
+            'normals': normals,
+            'neighbor_index': neighbor_index,
+        }
+    raise KeyError("MeshNet expects mesh data; verify mesh_root and dataset mesh fields.")
+
 
 
 def normalize_batch(data_batch):
@@ -169,16 +189,14 @@ def validate(loader, model, task='cls'):
             time2 = time()
 
             data_batch = normalize_batch(data_batch)
-            pc_in = data_batch['pointcloud']
-            # pointcloud can be either a Tensor [B,N,3] (PointNet2)
-            # or a mesh tuple/list (centers,corners,normals,neighbor_index) for MeshNet.
-            if torch.is_tensor(pc_in):
-                pc_in = pc_in.cuda()
-            # ---- 临时对齐：如果 dataset 还在输出点云 [B,N,3]，先转成 MeshNet 可吃的格式 ----
-            if torch.is_tensor(pc_in) and pc_in.dim() == 3 and pc_in.size(-1) == 3:
-                pc_in = pc_to_dummy_mesh(pc_in)
-            # -------------------------------------------------------------------------
-            out, _ = model(pc_in)
+            if cfg.model_name == 'meshnet':
+                mesh_data = build_mesh_data(data_batch)
+                out, _ = model(mesh_data)
+            else:
+                pc_in = data_batch['pointcloud']
+                if torch.is_tensor(pc_in):
+                    pc_in = pc_in.cuda()
+                out, _ = model(pc_in)
 
             time3 = time()
             perf.update(data_batch=data_batch, out=out)
@@ -237,19 +255,15 @@ def train(loader, model, decoder_model, optimizer, EmdLoss, task='cls'):
     time3 = time()
     for i, data_batch in enumerate(loader):
         time1 = time()
-        batch_size = data_batch['pointcloud'].shape[0]
+        pointcloud = data_batch['pointcloud']
+        batch_size = pointcloud.shape[0] if torch.is_tensor(pointcloud) else len(pointcloud)
         mv_feature = data_batch['multiview']
 
-        # ========== 关键修改点 ==========
-        # 如果使用MeshNet,需要准备mesh_data
+        # MeshNet branch uses mesh data (centers/corners/normals/neighbors).
         if cfg.model_name == 'meshnet':
-            mesh_data = {
-                'centers': data_batch['centers'].cuda(),
-                'corners': data_batch['corners'].cuda(),
-                'normals': data_batch['normals'].cuda(),
-                'neighbor_index': data_batch['neighbor_index'].cuda()
-            }
+            mesh_data = build_mesh_data(data_batch)
             out, mesh_feature = model(mesh_data)
+            pc_feature = mesh_feature
         else:
             # 原来的PointNet2分支
             out, pc_feature = model(data_batch['pointcloud'])
@@ -348,7 +362,22 @@ def get_model(cfg):
     if cfg.model_name == 'pointnet2':
         model = models.PointNet2(num_class=cfg.num_class)
     elif cfg.model_name == 'meshnet':  # 新增分支
-        model = models.MeshNetPointCMT(num_class=cfg.num_class)
+        if cfg.meshnet_cfg is None:
+            mesh_cfg = {
+                'structural_descriptor': {'num_kernel': 64, 'sigma': 0.2},
+                'mesh_convolution': {'aggregation_method': 'Concat'},
+                'mask_ratio': 0.95,
+                'dropout': 0.5,
+                'num_classes': cfg.num_class,
+            }
+        else:
+            with open(cfg.meshnet_cfg, 'r') as f:
+                y = yaml.safe_load(f)
+            mesh_cfg = y.get('MeshNet', y)
+            mesh_cfg = dict(mesh_cfg)
+            mesh_cfg['num_classes'] = cfg.num_class
+
+        model = models.MeshNetPointCMT(num_class=cfg.num_class, mesh_cfg=mesh_cfg)
     else:
         raise NotImplementedError
 
@@ -376,7 +405,13 @@ def get_optimizer(params):
 
 
 def entry_train(cfg):
-    dataset_train = ModelNet40_OfflineFeatures(cfg.data_root, split='train')
+    mesh_root = None
+    if cfg.model_name == 'meshnet':
+        if cfg.mesh_root is None:
+            raise ValueError("mesh_root is required when model_name=meshnet")
+        mesh_root = cfg.mesh_root
+
+    dataset_train = ModelNet40_OfflineFeatures(cfg.data_root, split='train', mesh_root=mesh_root)
     loader_train = torch.utils.data.DataLoader(dataset_train, batch_size=cfg.batch_size,
                                                num_workers=8, shuffle=True, drop_last=True,
                                                pin_memory=(torch.cuda.is_available()))
@@ -384,6 +419,7 @@ def entry_train(cfg):
         ModelNet40(
             data_path=cfg.data_root,
             partition='test',
+            mesh_root=mesh_root,
         ),
         num_workers=8,
         batch_size=cfg.batch_size,
@@ -451,6 +487,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=1, help='random seed')
     parser.add_argument('--data_root', type=str, default='dataset/ModelNet40/data/', help='Name of the data root')
     parser.add_argument('--model_name', type=str, default='pointnet2', help='Name of the model')
+    parser.add_argument('--mesh_root', type=str, default=None,
+                        help='MeshNet npz root with class/train|test subfolders.')
     parser.add_argument('--meshnet_cfg', type=str, default='config/train_config.yaml',
                         help='YAML path for MeshNet config (will read the `MeshNet:` section).')
     parser.add_argument('--batch_size', type=int, default=32, help='Size of batch)')
