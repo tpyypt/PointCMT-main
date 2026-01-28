@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # PointCMT
 [![arXiv](https://img.shields.io/badge/arXiv-2203.09065-b31b1b.svg)](https://arxiv.org/pdf/2210.04208.pdf)
 [![GitHub Stars](https://img.shields.io/github/stars/ZhanHeshen/PointCMT?style=social)](https://github.com/ZhanHeshen/PointCMT)
@@ -6,8 +5,8 @@
 
 This repository is for **PointCMT** introduced in the following paper
 
-[Xu Yan*](https://yanx27.github.io/), Heshen Zhan*, Chaoda Zheng, Jiantao Gao, Ruimao Zhang, Shuguang Cui, 
-[Zhen Li*](https://mypage.cuhk.edu.cn/academics/lizhen/), 
+[Xu Yan*](https://yanx27.github.io/), Heshen Zhan*, Chaoda Zheng, Jiantao Gao, Ruimao Zhang, Shuguang Cui,
+[Zhen Li*](https://mypage.cuhk.edu.cn/academics/lizhen/),
 "*Let Images Give You More: Point Cloud Cross-Modal Training for Shape Analysis*", NeurIPS 2022 (**Spotlight**) :smiley: [[arxiv]](https://arxiv.org/pdf/2210.04208.pdf).
 
 ![image](figures/PointCMT-pipeline.jpg)
@@ -15,7 +14,7 @@ This repository is for **PointCMT** introduced in the following paper
 If you find our work useful in your research, please consider citing:
 ```latex
 @InProceedings{yan2022let,
-      title={Let Images Give You More: Point Cloud Cross-Modal Training for Shape Analysis}, 
+      title={Let Images Give You More: Point Cloud Cross-Modal Training for Shape Analysis},
       author={Xu Yan and Heshen Zhan and Chaoda Zheng and Jiantao Gao and Ruimao Zhang and Shuguang Cui and Zhen Li},
       year={2022},
       booktitle={NeurIPS}
@@ -90,6 +89,16 @@ python train_pointcmt.py --exp_name pointnet2_pointcmt --cmpg_checkpoint [CMPG_C
 ```
 You can also train the vanilla model through `--no_pointcmt` option.
 
+### Stage III (MeshNet Branch)
+If you want to replace PointNet++ with MeshNet features, provide the mesh `.npz` root:
+```shell
+python train_pointcmt.py --model_name meshnet \
+  --mesh_root /data/tpy/projects/PointCMT-main/dataset/ModelNet40_processed \
+  --meshnet_cfg config/train_config.yaml \
+  --exp_name meshnet_pointcmt \
+  --cmpg_checkpoint [CMPG_CHECKPOINT]
+```
+
 ## Inference
 We conduct voting test on our trained model:
 ```shell
@@ -108,7 +117,3 @@ Code is built based on [PointNet++](https://github.com/erikwijmans/Pointnet2_PyT
 
 # License
 This repository is released under MIT License (see LICENSE file for details).
-=======
-# PointCMT-main
-Test the addition of the Mesh branch in PointCMT
->>>>>>> a48a1b7701bccb6c7bb40301e595d40599689bd2

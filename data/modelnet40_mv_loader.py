@@ -209,25 +209,112 @@ class ModelNet40(Dataset):
 
 
 class ModelNet40_OfflineFeatures(Dataset):
-    def __init__(self, root, split="train"):
+    def __init__(self, root, split="train", mesh_root=None, mesh_partition=None):
         self.root = root
         self.split = split
         feature_path = root + r"/modelnet40_%s_mvf.pth" % self.split
         self.dataset = torch.load(feature_path)
-        # 新增: Mesh数据路径
-        self.mesh_data_root = root.replace('data', 'mesh_data')  # 根据实际路径调整
+        self.mesh_root = mesh_root
+        self.mesh_part = mesh_partition if mesh_partition is not None else split
+        self.mesh_by_cls = _scan_mesh_npz(self.mesh_root, self.mesh_part)
+        self.use_mesh = self.mesh_root is not None
+
+        self.valid_indices = None
+        self.aligned_mesh_paths = None
+
+        if self.use_mesh:
+            dat_cnt = {c: 0 for c in MODELNET40_CLASSES}
+            for _, label, _ in self.dataset:
+                cls = MODELNET40_CLASSES[int(label)]
+                dat_cnt[cls] += 1
+
+            mesh_cnt = {c: len(self.mesh_by_cls.get(c, [])) for c in MODELNET40_CLASSES}
+            keep_cnt = {c: min(dat_cnt[c], mesh_cnt[c]) for c in MODELNET40_CLASSES}
+
+            total_dat = len(self.dataset)
+            total_mesh = sum(mesh_cnt.values())
+            total_keep = sum(keep_cnt.values())
+
+            if total_keep != total_dat:
+                missing_total = total_dat - total_keep
+                bad = [
+                    (c, dat_cnt[c], mesh_cnt[c], keep_cnt[c])
+                    for c in MODELNET40_CLASSES
+                    if dat_cnt[c] != mesh_cnt[c]
+                ]
+                print("[WARN] dat 与 mesh 数量不一致，将按“类别计数”严格对齐并跳过多余 dat 样本。")
+                print(f"[WARN] dat={total_dat}, mesh={total_mesh}, keep={total_keep}, dropped={missing_total}")
+                for c, a, b, k in bad:
+                    print(f"  - {c}: dat={a}, mesh={b}, keep={k}")
+
+            used_dat = {c: 0 for c in MODELNET40_CLASSES}
+            used_mesh = {c: 0 for c in MODELNET40_CLASSES}
+
+            valid_indices = []
+            aligned_mesh_paths = []
+
+            for i, (_, label, _) in enumerate(self.dataset):
+                cls = MODELNET40_CLASSES[int(label)]
+                if used_dat[cls] >= keep_cnt[cls]:
+                    continue
+
+                lst = self.mesh_by_cls.get(cls, [])
+                j = used_mesh[cls]
+                if j >= len(lst):
+                    continue
+
+                valid_indices.append(i)
+                aligned_mesh_paths.append(lst[j])
+
+                used_dat[cls] += 1
+                used_mesh[cls] += 1
+
+            self.valid_indices = valid_indices
+            self.aligned_mesh_paths = aligned_mesh_paths
+            assert len(self.valid_indices) == len(self.aligned_mesh_paths), "internal align error"
+        else:
+            self.valid_indices = list(range(len(self.dataset)))
+            self.aligned_mesh_paths = None
 
     def __len__(self):
-        return len(self.dataset)
+        return len(self.valid_indices)
 
     def _get_item(self, index):
         points, label, mvf = self.dataset[index]
 
         if self.split == "train":
-            points = translate_pointcloud(points.numpy())
-            np.random.shuffle(points)
+            points_np = points.numpy() if torch.is_tensor(points) else np.asarray(points)
+            points_np = translate_pointcloud(points_np)
+            np.random.shuffle(points_np)
+            points = points_np
 
         return points, label, mvf
 
     def __getitem__(self, index):
-        return self._get_item(index)
+        real_i = self.valid_indices[index]
+        points, label, mvf = self._get_item(real_i)
+        data_dict = {
+            "pointcloud": points,
+            "multiview": mvf,
+            "label": label,
+        }
+
+        if self.aligned_mesh_paths is not None:
+            npz_path = self.aligned_mesh_paths[index]
+            d = np.load(npz_path)
+            face = d["faces"]
+            neighbor_index = d["neighbors"]
+
+            face = torch.from_numpy(face).float().permute(1, 0).contiguous()
+            neighbor_index = torch.from_numpy(neighbor_index).long()
+
+            centers, corners, normals = face[:3], face[3:12], face[12:]
+            corners = corners - torch.cat([centers, centers, centers], 0)
+
+            data_dict["mesh_centers"] = centers
+            data_dict["mesh_corners"] = corners
+            data_dict["mesh_normals"] = normals
+            data_dict["mesh_neighbors"] = neighbor_index
+            data_dict["mesh_path"] = npz_path
+
+        return data_dict

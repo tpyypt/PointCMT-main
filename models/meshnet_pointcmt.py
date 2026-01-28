@@ -9,11 +9,10 @@ class MeshNetPointCMT(nn.Module):
     保持与原PointNet2相同的接口,便于集成到PointCMT训练流程
     """
 
-    def __init__(self, num_class):
+    def __init__(self, num_class, mesh_cfg=None):
         super().__init__()
 
-        # MeshNet配置(参考iMoonLab/MeshNet)
-        meshnet_cfg = {
+        meshnet_cfg = mesh_cfg or {
             'structural_descriptor': {
                 'num_kernel': 64,
                 'sigma': 0.2

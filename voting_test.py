@@ -183,7 +183,7 @@ def get_model(cfg):
             mesh_cfg['num_classes'] = cfg.num_class
 
         meshnet = models.MeshNet(mesh_cfg, require_fea=True)
-        model = models.MeshPointCMT(meshnet=meshnet, num_class=cfg.num_class, proj_dim=512)
+        model = models.MeshNetPointCMT(num_class=cfg.num_class)
     else:
         raise NotImplementedError
 
