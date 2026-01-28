@@ -70,7 +70,7 @@ def build_mesh_data(data_batch):
             'normals': normals,
             'neighbor_index': neighbor_index,
         }
-    raise KeyError("MeshNet requires mesh_centers/mesh_corners/mesh_normals/mesh_neighbors in data_batch.")
+    raise KeyError("MeshNet expects mesh data; verify mesh_root and dataset mesh fields.")
 
 
 
@@ -259,8 +259,7 @@ def train(loader, model, decoder_model, optimizer, EmdLoss, task='cls'):
         batch_size = pointcloud.shape[0] if torch.is_tensor(pointcloud) else len(pointcloud)
         mv_feature = data_batch['multiview']
 
-        # ========== 关键修改点 ==========
-        # 如果使用MeshNet,需要准备mesh_data
+        # MeshNet branch uses mesh data (centers/corners/normals/neighbors).
         if cfg.model_name == 'meshnet':
             mesh_data = build_mesh_data(data_batch)
             out, mesh_feature = model(mesh_data)

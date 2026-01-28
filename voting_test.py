@@ -133,6 +133,8 @@ def parse_args():
     parser = argparse.ArgumentParser('training')
     parser.set_defaults(entry=lambda cmd_args: parser.print_help())
     parser.add_argument('--data_root', type=str, default='dataset/ModelNet40/data/', help='Name of the data root')
+    parser.add_argument('--mesh_root', type=str, default=None,
+                        help='MeshNet npz root with class/train|test subfolders.')
     parser.add_argument('--checkpoint', type=str, default='pretrained/modelnet40/pointnet2_pointcmt.pth', help='path to save checkpoint (default: checkpoint)')
     parser.add_argument('--msg', type=str, default='demo', help='message after checkpoint')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size in training')
@@ -182,8 +184,7 @@ def get_model(cfg):
             mesh_cfg = dict(mesh_cfg)
             mesh_cfg['num_classes'] = cfg.num_class
 
-        meshnet = models.MeshNet(mesh_cfg, require_fea=True)
-        model = models.MeshNetPointCMT(num_class=cfg.num_class)
+        model = models.MeshNetPointCMT(num_class=cfg.num_class, mesh_cfg=mesh_cfg)
     else:
         raise NotImplementedError
 
@@ -213,10 +214,16 @@ def main():
     print(f"==> Using device: {device}")
 
     print('==> Preparing data..')
+    mesh_root = None
+    if args.model_name in ['meshnet', 'meshnet_pointcmt']:
+        if args.mesh_root is None:
+            raise ValueError("mesh_root is required for meshnet evaluation")
+        mesh_root = args.mesh_root
     test_loader = DataLoader(
         ModelNet40(
             data_path=args.data_root,
             partition='test',
+            mesh_root=mesh_root,
         ),
         num_workers=8,
         batch_size=args.batch_size,

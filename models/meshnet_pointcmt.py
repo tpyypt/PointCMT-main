@@ -20,8 +20,8 @@ class MeshNetPointCMT(nn.Module):
             'mesh_convolution': {
                 'aggregation_method': 'Concat'  # 可选: 'Concat', 'Max', 'Average'
             },
-            'mask_ratio': 0.2,  # 训练时随机mask比例
-            'dropout': 0.3,
+            'mask_ratio': 0.95,  # 训练时随机mask比例
+            'dropout': 0.5,
             'num_classes': num_class
         }
 

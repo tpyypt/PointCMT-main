@@ -242,7 +242,7 @@ class ModelNet40_OfflineFeatures(Dataset):
                     for c in MODELNET40_CLASSES
                     if dat_cnt[c] != mesh_cnt[c]
                 ]
-                print("[WARN] dat 与 mesh 数量不一致，将按“类别计数”严格对齐并跳过多余 dat 样本。")
+                print("[WARN] dat and mesh counts differ; aligning per class and dropping extra samples.")
                 print(f"[WARN] dat={total_dat}, mesh={total_mesh}, keep={total_keep}, dropped={missing_total}")
                 for c, a, b, k in bad:
                     print(f"  - {c}: dat={a}, mesh={b}, keep={k}")
@@ -282,11 +282,11 @@ class ModelNet40_OfflineFeatures(Dataset):
     def _get_item(self, index):
         points, label, mvf = self.dataset[index]
 
+        points_np = points.numpy() if torch.is_tensor(points) else np.asarray(points)
         if self.split == "train":
-            points_np = points.numpy() if torch.is_tensor(points) else np.asarray(points)
             points_np = translate_pointcloud(points_np)
             np.random.shuffle(points_np)
-            points = points_np
+        points = points_np.astype("float32")
 
         return points, label, mvf
 
@@ -309,7 +309,7 @@ class ModelNet40_OfflineFeatures(Dataset):
             neighbor_index = torch.from_numpy(neighbor_index).long()
 
             centers, corners, normals = face[:3], face[3:12], face[12:]
-            corners = corners - torch.cat([centers, centers, centers], 0)
+            corners = corners - torch.cat([centers, centers, centers], 0)  # repeat centers for 3 vertices
 
             data_dict["mesh_centers"] = centers
             data_dict["mesh_corners"] = corners
