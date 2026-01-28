@@ -168,18 +168,17 @@ def validate(loader, model, task='cls'):
             time1 = time()
             time2 = time()
 
-            # ========== 修改点 ==========
-            if cfg.model_name == 'meshnet':
-                mesh_data = {
-                    'centers': data_batch['centers'].cuda(),
-                    'corners': data_batch['corners'].cuda(),
-                    'normals': data_batch['normals'].cuda(),
-                    'neighbor_index': data_batch['neighbor_index'].cuda()
-                }
-                out, _ = model(mesh_data)
-            else:
-                out, _ = model(data_batch['pointcloud'].cuda())
-            # ============================
+            data_batch = normalize_batch(data_batch)
+            pc_in = data_batch['pointcloud']
+            # pointcloud can be either a Tensor [B,N,3] (PointNet2)
+            # or a mesh tuple/list (centers,corners,normals,neighbor_index) for MeshNet.
+            if torch.is_tensor(pc_in):
+                pc_in = pc_in.cuda()
+            # ---- 临时对齐：如果 dataset 还在输出点云 [B,N,3]，先转成 MeshNet 可吃的格式 ----
+            if torch.is_tensor(pc_in) and pc_in.dim() == 3 and pc_in.size(-1) == 3:
+                pc_in = pc_to_dummy_mesh(pc_in)
+            # -------------------------------------------------------------------------
+            out, _ = model(pc_in)
 
             time3 = time()
             perf.update(data_batch=data_batch, out=out)

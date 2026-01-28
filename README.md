@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # PointCMT
 [![arXiv](https://img.shields.io/badge/arXiv-2203.09065-b31b1b.svg)](https://arxiv.org/pdf/2210.04208.pdf)
 [![GitHub Stars](https://img.shields.io/github/stars/ZhanHeshen/PointCMT?style=social)](https://github.com/ZhanHeshen/PointCMT)
@@ -107,3 +108,7 @@ Code is built based on [PointNet++](https://github.com/erikwijmans/Pointnet2_PyT
 
 # License
 This repository is released under MIT License (see LICENSE file for details).
+=======
+# PointCMT-main
+Test the addition of the Mesh branch in PointCMT
+>>>>>>> a48a1b7701bccb6c7bb40301e595d40599689bd2
