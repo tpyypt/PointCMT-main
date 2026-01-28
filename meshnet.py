@@ -19,9 +19,9 @@ class MeshConvolution(nn.Module):
         
         # Spatial and structural feature aggregation
         self.spatial_conv = nn.Conv2d(in_channels, out_channels, 
-                                      kernel_size=(1, neighbor_num))
+                                      kernel_size=(1, neighbor_num), padding=(0, 0))
         self.structural_conv = nn.Conv2d(in_channels, out_channels, 
-                                        kernel_size=(1, neighbor_num))
+                                        kernel_size=(1, neighbor_num), padding=(0, 0))
         
     def forward(self, spatial_features, structural_features):
         """
@@ -34,6 +34,12 @@ class MeshConvolution(nn.Module):
         Returns:
             features: Aggregated features (B, out_channels, F, 1)
         """
+        # Pad if necessary to maintain spatial dimensions
+        if spatial_features.size(3) < self.neighbor_num:
+            pad_size = self.neighbor_num - spatial_features.size(3)
+            spatial_features = F.pad(spatial_features, (0, pad_size))
+            structural_features = F.pad(structural_features, (0, pad_size))
+        
         spatial_out = self.spatial_conv(spatial_features)
         structural_out = self.structural_conv(structural_features)
         
@@ -124,6 +130,8 @@ class MeshNetBranch(nn.Module):
         # Process through mesh blocks
         for mesh_block in self.mesh_blocks:
             x = mesh_block(spatial_features, structural_features)
+            # Repeat the output to maintain neighbor dimension for next layer
+            x = x.repeat(1, 1, 1, self.neighbor_num)
             spatial_features = x
             structural_features = x
         

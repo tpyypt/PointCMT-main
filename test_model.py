@@ -1,45 +1,49 @@
 """
-Test script to demonstrate PointCMT with Point Cloud branch and MeshNet branch
+Test script to demonstrate PointCMT with MeshNet branch
 """
 
 import torch
-from model import PointCMT, PointCloudBranch
+from model import PointCMT
+from meshnet import MeshNetBranch
 
 
-def test_original_pointcmt():
-    """Test original PointCMT with Point Cloud branch"""
+def test_meshnet_pointcmt():
+    """Test PointCMT with MeshNet branch"""
     print("=" * 60)
-    print("Testing Original PointCMT with Point Cloud Branch")
+    print("Testing PointCMT with MeshNet Branch")
     print("=" * 60)
     
     # Create model
-    model = PointCMT(num_classes=40, input_dim=3, feature_dim=512)
+    model = PointCMT(num_classes=40, input_channels=6, feature_dim=512)
     
-    # Create sample point cloud data (batch_size=2, num_points=1024, dims=3)
+    # Create sample mesh data (batch_size=2, num_faces=512, channels=6, neighbors=3)
     batch_size = 2
-    num_points = 1024
-    point_cloud = torch.randn(batch_size, num_points, 3)
+    num_faces = 512
+    input_channels = 6
+    neighbor_num = 3
+    mesh_data = torch.randn(batch_size, num_faces, input_channels, neighbor_num)
     
-    print(f"\nInput shape: {point_cloud.shape}")
+    print(f"\nInput shape: {mesh_data.shape}")
     print(f"Model architecture:")
-    print(f"  - Branch type: {type(model.point_cloud_branch).__name__}")
-    print(f"  - Input dimension: {model.point_cloud_branch.input_dim}")
-    print(f"  - Output dimension: {model.point_cloud_branch.output_dim}")
+    print(f"  - Branch type: {type(model.mesh_branch).__name__}")
+    print(f"  - Input channels: {model.mesh_branch.input_channels}")
+    print(f"  - Output dimension: {model.mesh_branch.output_dim}")
+    print(f"  - Neighbor number: {model.mesh_branch.neighbor_num}")
     
     # Forward pass
     model.eval()
     with torch.no_grad():
-        output = model(point_cloud)
+        output = model(mesh_data)
     
     print(f"\nOutput shape: {output.shape}")
     print(f"Model output (logits): {output[0, :5].tolist()}")  # Show first 5 logits
-    print(f"✓ Point Cloud branch working correctly!")
+    print(f"✓ MeshNet branch working correctly!")
     
     return model
 
 
 if __name__ == "__main__":
-    test_original_pointcmt()
+    test_meshnet_pointcmt()
     print("\n" + "=" * 60)
     print("Test completed successfully!")
     print("=" * 60)

@@ -5,6 +5,7 @@ PointCMT: Cross-Modality Transformer with Point Cloud and Mesh Branches
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from meshnet import MeshNetBranch
 
 
 class PointCloudBranch(nn.Module):
@@ -55,19 +56,20 @@ class PointCloudBranch(nn.Module):
 class PointCMT(nn.Module):
     """
     PointCMT: Cross-Modality Transformer
-    Currently uses Point Cloud branch for 3D data processing
+    Currently uses MeshNet branch for 3D data processing
     """
     
-    def __init__(self, num_classes=40, input_dim=3, feature_dim=512):
+    def __init__(self, num_classes=40, input_channels=6, feature_dim=512):
         super(PointCMT, self).__init__()
         self.num_classes = num_classes
         self.feature_dim = feature_dim
         
-        # Point cloud branch for 3D data processing
-        self.point_cloud_branch = PointCloudBranch(
-            input_dim=input_dim,
-            hidden_dim=256,
-            output_dim=feature_dim
+        # MeshNet branch for 3D mesh data processing
+        self.mesh_branch = MeshNetBranch(
+            input_channels=input_channels,
+            hidden_dims=[64, 128, 256],
+            output_dim=feature_dim,
+            neighbor_num=3
         )
         
         # Classifier head
@@ -84,13 +86,13 @@ class PointCMT(nn.Module):
         Forward pass for PointCMT
         
         Args:
-            x: Input data (point cloud) of shape (B, N, 3)
+            x: Input data (mesh) of shape (B, F, input_channels, neighbor_num)
             
         Returns:
             logits: Classification logits of shape (B, num_classes)
         """
-        # Extract features using point cloud branch
-        features = self.point_cloud_branch(x)
+        # Extract features using MeshNet branch
+        features = self.mesh_branch(x)
         
         # Classification head
         x = F.relu(self.bn1(self.fc1(features)))
